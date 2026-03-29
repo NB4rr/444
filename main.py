@@ -1,71 +1,76 @@
 import discord
 import os
-import asyncio
 import random
+import re
 
-TOKEN = os.getenv('TOKEN')
-if not TOKEN:
-    print("❌ ERROR: No TOKEN in Railway vars!")
+TOKEN = os.getenv('TOKEN', '').strip()
+if len(TOKEN) < 50:
+    print("❌ Token trop court!")
     exit(1)
+print(f"🔑 OK: {TOKEN[:15]}...")
 
-print(f"🔑 Token loaded: {TOKEN[:15]}... ({len(TOKEN)} chars)")
-
-intents = discord.Intents.default()
-intents.message_content = True
-client = discord.Client(intents=intents, self_bot=True)
+client = discord.Client(self_bot=True)
+auto_reacts = {}
 
 @client.event
 async def on_ready():
-    print(f"✅ CONNECTED: {client.user} (ID: {client.user.id})")
-    print("🎉 Send <@your_id> help to test")
+    print(f"✅ {client.user} EN LIGNE!")
+    print("Utilise <@ID> help")
 
 @client.event
 async def on_message(message):
     if message.author.id == client.user.id: return
     
     content = message.content.lower()
-    my_id = str(client.user.id)
+    mention = f'<@{client.user.id}>'
     
-    # Help
-    if f'<@{my_id}>' in content and 'help' in content:
-        embed = discord.Embed(title="🤖 SelfBot v2.0", color=0x5865F2)
-        embed.set_thumbnail(url="https://media.giphy.com/media/3o7btPCcdNniyf0ArS/giphy.gif")
-        embed.description = "**Voice:** `<@> join [vc_id]` | `<@> leave`\n**React:** `<@> dir @user` (ON) | `<@> 7yd @user` (OFF)\n**Text:** `<@> say hi` | `<@> spam 5 hi` | `<@> dm @user msg`"
-        embed.set_footer(text="24/7 Railway • No limits")
-        await message.reply(embed=embed, mention_author=False)
-        return
-    
-    # Voice (auto or ID)
-    if 'join' in content and f'<@{my_id}>' in content:
-        if message.author.voice:
-            vc = message.author.voice.channel
-        else:
-            parts = content.split()
-            vc_id = parts[parts.index('join') + 1] if len(parts) > parts.index('join') + 1 else None
-            vc = client.get_channel(int(vc_id)) if vc_id else None
-        if vc:
-            await vc.connect()
+    if mention in content:
+        parts = content.replace(mention, '').strip().split(maxsplit=3)
+        cmd = parts[0] if parts else ''
+        
+        # HELP
+        if cmd == 'help':
+            embed = discord.Embed(title="🤖 SELF BOT", color=0x00ff00)
+            embed.add_field(name="🎵 VOICE", value="join [id] | leave", inline=False)
+            embed.add_field(name="⚡ REACT", value="dir @user | 7yd @user", inline=False)
+            embed.add_field(name="💬 TEXT", value="say msg | spam 5 msg | dm @user msg", inline=False)
+            embed.add_field(name="👑 MOD", value="nick nom | ban @user | kick @user", inline=False)
+            await message.reply(embed=embed)
+            return
+        
+        # VOICE JOIN/LEAVE
+        if cmd == 'join':
+            if message.author.voice:
+                await message.author.voice.channel.connect()
             await message.add_reaction('✅')
+        if cmd == 'leave':
+            vc = discord.utils.get(client.voice_clients, guild=message.guild)
+            if vc: await vc.disconnect()
+            await message.add_reaction('👋')
+        
+        # AUTO REACT dir/7yd
+        if cmd in ['dir', '7yd'] and len(parts) >= 2:
+            user_id = int(re.search(r'(\d+)', parts[1]).group(1))
+            auto_reacts[user_id] = (cmd == 'dir')
+            await message.add_reaction('✅' if cmd == 'dir' else '❌')
+        
+        # SAY / SPAM
+        if cmd == 'say' and len(parts) >= 2:
+            await message.channel.send(' '.join(parts[1:]))
+        if cmd == 'spam' and len(parts) >= 3:
+            count = int(parts[1])
+            msg = ' '.join(parts[2:])
+            for _ in range(count): await message.channel.send(msg)
+        
+        # DM
+        if cmd == 'dm' and len(parts) >= 3:
+            user_id = int(re.search(r'(\d+)', parts[1]).group(1))
+            user = client.get_user(user_id)
+            if user: await user.send(' '.join(parts[2:]))
     
-    if 'leave' in content and f'<@{my_id}>' in content:
-        vc = discord.utils.get(client.voice_clients, guild=message.guild)
-        if vc: await vc.disconnect()
-        await message.add_reaction('👋')
-    
-    # Auto-react tracking
-    cmd_parts = content.replace(f'<@{my_id}>', '').strip().split(maxsplit=2)
-    if len(cmd_parts) >= 3 and cmd_parts[0] in ['dir', '7yd']:
-        user_id = int(cmd_parts[1].replace('<@', '').replace('>', ''))
-        if cmd_parts[0] == 'dir':
-            globals()['auto_react_' + str(user_id)] = True
-            await message.add_reaction('🔛')
-        else:
-            globals()['auto_react_' + str(user_id)] = False
-            await message.add_reaction('⏹️')
-    
-    # Auto-react trigger
-    if hasattr(message.author, 'id') and globals().get(f'auto_react_{message.author.id}', False):
-        await message.add_reaction('❤️')
+    # AUTO-REACT SYSTEM
+    if message.author.id in auto_reacts and auto_reacts[message.author.id]:
+        emojis = ['👍','❤️','😂','🔥','😍']
+        await message.add_reaction(random.choice(emojis))
 
-# CRITICAL: Selfbot login (NOT asyncio.run/main())
 client.run(TOKEN, bot=False)
