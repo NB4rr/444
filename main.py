@@ -2,14 +2,17 @@ import discord
 import asyncio
 import random
 import os
-from dotenv import load_dotenv
 from datetime import datetime
 
-# Load .env for LOCAL testing
-load_dotenv()
-
+# RAILWAY: Uses Variables directly → NO dotenv needed
 TOKEN = os.getenv('TOKEN')
 if not TOKEN:
+    print("❌ CRITICAL: Set TOKEN in Railway Variables!")
+    exit(1)
+
+print(f"🚀 Starting Selfbot... TOKEN: {'OK' if TOKEN else 'MISSING'}")
+
+client = discord.Client(self_bot=True)
     print("❌ ERROR: TOKEN not found! Add to .env file")
     exit(1)
 
